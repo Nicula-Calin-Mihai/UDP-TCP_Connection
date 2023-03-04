@@ -1,0 +1,125 @@
+Nicula Calin-Mihai - 324CBb
+
+Am folosit rezolvarea laboratorului 8
+
+Inainte de toate, nu am fost fluent in vorbire asa ca va traduc precaut urm:
+    subscriber = abonat
+    UDP = contentCreator
+    topic = canal
+    sf (store-and-forward) = clopotel
+
+In helper.h
+ am functia de dezactivare a algoritmului lui Nagle
+ o structura specifica UDP (de aici numele de datagram) care ma ajuta sa 
+  prelucrez mesajele
+ alta care tine numele topicului si un bool care verifica daca este apasat
+  clopotelul
+ iar ultima care le foloseste pe ambele, reprezentand trasaturile unui client,
+  printre care si un bool care verifica daca mai este conectat (de aceasta
+  micunealta ne vom ajuta mai tarziu)
+
+Server si subscriber functioneaza in sincron conform tabelelor astora:
+ https://ocw.cs.pub.ro/courses/_detail/pc/laboratoare/apeluri.png?id=pc%3Alabor
+ atoare%3A06
+ https://ocw.cs.pub.ro/courses/_detail/pc/laboratoare/tcp_client_server_interac
+ tion.png?id=pc%3Alaboratoare%3A07
+
+!!!
+Incepe sa citesti din server si subscriber cu main()-urile
+Cand ne izbim de o functie creata de mine o explic atunci!
+Aici incerc sa explic functionalitatea, iar comentariile din cod explica rolul
+ anumitor etape care simt ca trebuie mentionate
+!!!
+
+Sincron:
+
+    Definesc datele
+    Leg subscriberul cu serverul
+     socket -> bind
+    Leg clientul UDP (content creator) cu serverul
+     socket -> bind
+    serverul asculta comenzile
+     (socket -> bind) -> listen
+    subscriber incearca sa se conecteze
+    subscriberul ii ofera id-ul lui serverului si verifica conexiunea (functia
+     attach din subscriber + functia attached din server),
+     adica verifica daca este un abonat veteran, mai vechi, (return 0)
+     sau verifica daca este fresh, nou, (return 1)
+     conectat already (return 2)
+
+   while:
+    se verifica existenta legaturilor (select)
+
+
+Subscriber:
+
+    primul if extrage mesajul dat de subscriber catre server si verifica daca
+     este 'exit' sau 'subscribe/unsubscribe', apoi trimite mesajul catre server
+    iar al doilea if extrage mesajul dat de server pt subscriber si verifica
+     daca se inchide serverul pentru a se deconecta si el sau daca a fost 
+     abonat/dezabonat, iar daca nu a fost niciuna dintre acestea subscriberul 
+     va primi mesajul de la server, mai precis de la Topic-ul la care este 
+     abonat si a trimis mesaj.
+    Acest mesaj a fost o datagrama, primit ca char*, iar apoi format in
+     datagram (procesul aceste este datorat octetilor asezati asa cum trebuie 
+     si prelucrati corespunzator) si afisat de functia printTopic
+    Functia printTopic afiseaza corespunzator mesajul in functie de tipul ei.
+    Daca s a intrat pe exit se rupe socket ul.
+
+Server:
+
+    trec prin toate valorile de la 0 pana la cea mai mare valoare a unui fds
+     valid
+    verific daca valoarea la care am ajuns este valida
+    verific de ce tip este
+     verific ultimul TCP
+        accept conectarea, scot algoritmul lui Nagle, adaug in lista de fds,
+        daca valoarea acestuia e mai mare decat fost valoare maxima => se 
+        schimba maximul, preiau ID-ul,
+        daca abonatul e mai vechi il caut in lista de clienti (getClientID) si 
+        ii setez conexiunea inapoi true si ii schimb socketul cu cel nou, apoi 
+        aceluias client ii trimit mesajele de la topicurile lui cu SF activat
+        daca e brandNew il bag in vector cu datele preluate
+        conectat already, scoate socket ul inutil din lista de fds
+
+     verific UDP
+        preia measjul trimis de contentCreator si il trimite abonatilor activi,
+        iar cei inactivi sunt trecuti pe carnetel si asaltati cand se 
+        reconecteaza
+
+     verific STDIN_FILENO (0)
+      daca serverul a primit comanda de exit, iar in caz pozitiv trimite mesaj 
+      subscribers pentru a se opri
+
+     else (verific alt socket TCP valid)
+      Principiul de functionare: ideea e ca pe prima ramura cu TCP se intra o 
+       singura data, ptc e doar atunci cand se conecteaza, dar aici se intra
+       pana la sfarsitul legaturii
+      Functionalitatea: citeste mesajul si verifica daca s a rupt legatura sau
+       else
+       in caz de 'exit' clientul ramane (ID) in lista (clients) dar i se trece
+        connected pe false si se sterge socket ul din fds
+       in caz de 'else' se verifica daca primul cuvant este subscribe sau
+        unsubscribe, iar pentru raspunsul pozitiv se apeleaza functia
+        corespunzatoare cu parametrii dati, indexul pentru ca se depista 
+        clientul + numele topicului + flagul (daca e subscribe)
+
+        subscribe ia topicurile la care e abonat si verifica daca noul topic se
+         afla pe acolo, in caz pozitiv pune ca l a gasit si verifica daca vrea
+         sa opreasca clopotelul asa ca i trimite un ultim mesaj, iar apoi il 
+         scoate de pe lista (sfTopics), daca nu a gasit in lista de canale la 
+         care era deja abonat, atunci se creaza un topic nou cu flagul 
+         corespunzator, se trimite si un mesaj de confirmare
+        unsubscribe cauta canalul in lista de canale la care este abonat si il
+         scoate + trimite un measj de confirmare
+
+     se restabileste tmp_fds
+
+
+Ce am castigat din tema asta?
+    Am acumulat mult mai bine laboratoarele si cursurile
+Ce am pierdut?
+    Prea multe fire de par din cap, ore de somn si o iesita la bere
+
+
+
